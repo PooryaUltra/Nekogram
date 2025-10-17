@@ -3708,7 +3708,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 
         TextView buttonTextView = new TextView(getContext());
         ScaleStateListAnimator.apply(buttonTextView);
-        buttonTextView.setText(getString(R.string.AppUpdate));
+        buttonTextView.setText(getString(R.string.UpdateNekogram));
         buttonTextView.setTextColor(Theme.getColor(Theme.key_featuredStickers_buttonText, resourcesProvider));
         buttonTextView.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(12), AndroidUtilities.dp(16), AndroidUtilities.dp(12));
         buttonTextView.setGravity(Gravity.CENTER);
