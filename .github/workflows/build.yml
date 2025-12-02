@@ -313,7 +313,7 @@ jobs:
       run: chmod +x gradlew
 
     - name: Build APK
-      run: ./gradlew assembleAfatDebug --no-daemon --warning-mode=none
+      run: ./gradlew assembleDebug --no-daemon --warning-mode=none
       env:
         ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
     
