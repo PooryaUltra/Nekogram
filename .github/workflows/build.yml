@@ -305,6 +305,7 @@ jobs:
       run: |
         JSON='{"project_info":{"project_number":"000","project_id":"neko","storage_bucket":"neko.appspot.com"},"client":[{"client_info":{"mobilesdk_app_id":"1:000:android:000","android_client_info":{"package_name":"tw.nekomimi.nekogram"}},"api_key":[{"current_key":"AIza000"}],"services":{"appinvite_service":{"other_platform_oauth_client":[]}}},{"client_info":{"mobilesdk_app_id":"1:000:android:001","android_client_info":{"package_name":"tw.nekomimi.nekogram.beta"}},"api_key":[{"current_key":"AIza001"}],"services":{"appinvite_service":{"other_platform_oauth_client":[]}}}],"configuration_version":"1"}'
         echo "$JSON" > TMessagesProj/google-services.json
+        echo "$JSON" > TMessagesProj_App/google-services.json
 
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
@@ -326,3 +327,4 @@ jobs:
         name: Nekogram-Blur-APK
         path: "**/build/outputs/apk/**/*.apk"
         if-no-files-found: warn
+        
