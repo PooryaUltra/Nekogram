@@ -49,38 +49,158 @@ jobs:
         ndk-version: r26d
         add-to-path: true
 
-    - name: Disable signature verification
+    - name: Delete pre-compiled native libraries
       run: |
-        # Create genuine.h
-        mkdir -p TMessagesProj/jni/integrity
-        cat > TMessagesProj/jni/integrity/genuine.h << 'GENUINEOF'
-        #ifndef GENUINE_H
-        #define GENUINE_H
-        #define GENUINE_NAME ""  
-        #define GENUINE_PACKAGE "tw.nekomimi.nekogram"
-        #define GENUINE_SIGNATURE 0x0
-        #define GENUINE_SIZE 0
-        #define GENUINE_HASH 0x0
-        #define NO_CHECK_GENUINE 1
-        #endif
-        GENUINEOF
+        echo "=== Deleting ALL pre-compiled .so files ==="
+        # Delete from jniLibs (pre-compiled libs that override build)
+        find . -path "*/jniLibs/*" -name "*.so" -type f | while read f; do
+          echo "Deleting jniLibs: $f"
+          rm -f "$f"
+        done
         
-        # Disable Colorado check if present
-        if [ -f "TMessagesProj/jni/integrity/genuine.c" ]; then
-          # Comment out kill and exit calls
-          sed -i 's/kill(getpid/\/\/kill(getpid/g' TMessagesProj/jni/integrity/genuine.c
-          sed -i 's/exit(/\/\/exit(/g' TMessagesProj/jni/integrity/genuine.c
+        # Delete from libs folder
+        find . -path "*/libs/*" -name "*.so" -type f | while read f; do
+          echo "Deleting libs: $f"
+          rm -f "$f"
+        done
+        
+        # Delete any libneko*.so anywhere
+        find . -name "libneko*.so" -type f | while read f; do
+          echo "Deleting libneko: $f"
+          rm -f "$f"
+        done
+        
+        # Delete any libgenuine*.so anywhere  
+        find . -name "libgenuine*.so" -type f | while read f; do
+          echo "Deleting libgenuine: $f"
+          rm -f "$f"
+        done
+        
+        echo "=== Checking for remaining .so files ==="
+        find . -name "*.so" -type f 2>/dev/null | head -30 || echo "None or few found"
+
+    - name: Disable signature verification (genuine.h)
+      run: |
+        echo "=== Creating genuine.h to COMPLETELY disable signature check ==="
+        
+        # Find where genuine.h should go
+        GENUINE_DIR=$(find . -type d -name "integrity" | head -1)
+        if [ -z "$GENUINE_DIR" ]; then
+          GENUINE_DIR="TMessagesProj/jni/integrity"
+          mkdir -p "$GENUINE_DIR"
+        fi
+        echo "Using directory: $GENUINE_DIR"
+        
+        # Create genuine.h with ALL signature checks DISABLED
+        cat > "$GENUINE_DIR/genuine.h" << 'GENUINEOF'
+#ifndef GENUINE_H
+#define GENUINE_H
+
+// ============================================
+// DISABLE ALL SIGNATURE AND INTEGRITY CHECKS
+// ============================================
+
+// Turn off all maps checks
+#define NO_CHECK_MAPS
+
+// Turn off xposed check  
+#define NO_CHECK_XPOSED
+
+// Undefine ALL crash handlers
+#undef GENUINE_FALSE_CRASH
+#undef GENUINE_FAKE_CRASH
+#undef GENUINE_OVERLAY_CRASH
+#undef GENUINE_ODEX_CRASH
+#undef GENUINE_DEX_CRASH
+#undef GENUINE_PROXY_CRASH
+#undef GENUINE_ERROR_CRASH
+#undef GENUINE_FATAL_CRASH
+#undef GENUINE_NOAPK_CRASH
+
+// Undefine ALL native handlers that would kill the process
+#undef GENUINE_FALSE_NATIVE
+#undef GENUINE_FAKE_NATIVE
+#undef GENUINE_OVERLAY_NATIVE
+#undef GENUINE_ODEX_NATIVE
+#undef GENUINE_DEX_NATIVE
+#undef GENUINE_PROXY_NATIVE
+#undef GENUINE_ERROR_NATIVE
+#undef GENUINE_FATAL_NATIVE
+#undef GENUINE_NOAPK_NATIVE
+
+// Empty signature values
+#define GENUINE_NAME ""
+#define GENUINE_SIZE 0
+#define GENUINE_HASH 0
+
+#endif
+GENUINEOF
+        
+        echo "Created genuine.h:"
+        cat "$GENUINE_DIR/genuine.h"
+        
+        # Also copy to TMessagesProj/jni/integrity if different location
+        mkdir -p "TMessagesProj/jni/integrity"
+        cp "$GENUINE_DIR/genuine.h" "TMessagesProj/jni/integrity/genuine.h" 2>/dev/null || true
+        
+    - name: Patch native source code to disable kill/crash
+      run: |
+        echo "=== Patching ALL native source code ==="
+        
+        # Find and patch genuine.c specifically
+        GENUINE_C=$(find . -path "*/jni/*" -name "genuine.c" -type f 2>/dev/null | head -1)
+        if [ -n "$GENUINE_C" ]; then
+          echo "=== Patching genuine.c: $GENUINE_C ==="
+          # Replace kill and exit calls with no-ops
+          sed -i 's/kill(getpid(), SIGKILL)/((void)0)/g' "$GENUINE_C"
+          sed -i 's/kill(getpid(), 9)/((void)0)/g' "$GENUINE_C"
+          sed -i 's/_exit(1)/return/g' "$GENUINE_C"
+          sed -i 's/exit(1)/return/g' "$GENUINE_C"
+          # Make check functions return success (0)
+          sed -i 's/return check;/return 0; \/\/ disabled/g' "$GENUINE_C"
+          sed -i 's/return genuine;/return 0; \/\/ disabled/g' "$GENUINE_C"
           echo "Patched genuine.c"
         fi
         
-        # Check for colorado in other files and disable
-        find TMessagesProj/jni -type f \( -name "*.c" -o -name "*.cpp" \) -exec grep -l "colorado\|Colorado" {} \; 2>/dev/null | while read f; do
-          echo "Patching: $f"
-          sed -i 's/colorado(/\/\/colorado_disabled(/g' "$f"
+        # Find and patch colorado in any file
+        echo "=== Searching for colorado check in all files ==="
+        find . -path "*/jni/*" -type f \( -name "*.c" -o -name "*.cpp" -o -name "*.h" \) 2>/dev/null | while read f; do
+          if grep -q "colorado\|Colorado" "$f" 2>/dev/null; then
+            echo "Patching colorado in: $f"
+            sed -i 's/colorado(/colorado_disabled(/g' "$f"
+            sed -i 's/Colorado(/Colorado_disabled(/g' "$f"
+          fi
         done
         
-        # Make sure the check always passes
-        find TMessagesProj/jni -type f \( -name "*.c" -o -name "*.cpp" \) -exec sed -i 's/if.*genuine.*check.*/if (1) { \/\/ genuine check disabled/g' {} \; 2>/dev/null || true
+        # Patch any file with kill(getpid
+        echo "=== Patching kill calls ==="
+        find . -path "*/jni/*" -type f \( -name "*.c" -o -name "*.cpp" \) 2>/dev/null | while read f; do
+          if grep -q "kill.*getpid\|SIGKILL" "$f" 2>/dev/null; then
+            echo "Patching kill in: $f"
+            sed -i 's/kill(getpid(), SIGKILL)/((void)0)/g' "$f"
+            sed -i 's/kill(getpid(), 9)/((void)0)/g' "$f"
+          fi
+        done
+        
+        echo "=== Native patching complete ==="
+      env:
+        ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+    
+    - name: Force clean build of native libraries
+      run: |
+        echo "=== Cleaning ALL build caches to force native rebuild ==="
+        rm -rf TMessagesProj/.cxx 2>/dev/null || true
+        rm -rf TMessagesProj/build 2>/dev/null || true
+        rm -rf TMessagesProj_App/build 2>/dev/null || true
+        rm -rf .gradle 2>/dev/null || true
+        rm -rf build 2>/dev/null || true
+        
+        # Touch build files to force rebuild
+        find . -name "CMakeLists.txt" -exec touch {} \; 2>/dev/null || true
+        find . -name "Android.mk" -exec touch {} \; 2>/dev/null || true
+        find . -name "Application.mk" -exec touch {} \; 2>/dev/null || true
+        
+        echo "=== Build cache cleaned ==="
       env:
         ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
@@ -301,10 +421,15 @@ jobs:
     - name: Make gradlew executable
       run: chmod +x gradlew
 
-    - name: Build APK
-      run: ./gradlew assembleDebug --no-daemon --warning-mode=none
+    - name: Clean and Build APK
+      run: |
+        echo "=== Starting clean build ==="
+        ./gradlew clean --no-daemon 2>/dev/null || true
+        ./gradlew assembleDebug --no-daemon --warning-mode=none
       env:
         ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+        ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
     
     - name: Find APKs
       run: find . -name "*.apk" -type f
@@ -315,4 +440,3 @@ jobs:
         name: Nekogram-Blur-APK
         path: "**/build/outputs/apk/**/*.apk"
         if-no-files-found: warn
-        
