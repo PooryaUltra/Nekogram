@@ -83,7 +83,6 @@ jobs:
       run: |
         echo "=== Creating genuine.h to COMPLETELY disable signature check ==="
         
-        # Find where genuine.h should go
         GENUINE_DIR=$(find . -type d -name "integrity" | head -1)
         if [ -z "$GENUINE_DIR" ]; then
           GENUINE_DIR="TMessagesProj/jni/integrity"
@@ -91,55 +90,38 @@ jobs:
         fi
         echo "Using directory: $GENUINE_DIR"
         
-        # Create genuine.h with ALL signature checks DISABLED
         cat > "$GENUINE_DIR/genuine.h" << 'GENUINEOF'
-#ifndef GENUINE_H
-#define GENUINE_H
-
-// ============================================
-// DISABLE ALL SIGNATURE AND INTEGRITY CHECKS
-// ============================================
-
-// Turn off all maps checks
-#define NO_CHECK_MAPS
-
-// Turn off xposed check  
-#define NO_CHECK_XPOSED
-
-// Undefine ALL crash handlers
-#undef GENUINE_FALSE_CRASH
-#undef GENUINE_FAKE_CRASH
-#undef GENUINE_OVERLAY_CRASH
-#undef GENUINE_ODEX_CRASH
-#undef GENUINE_DEX_CRASH
-#undef GENUINE_PROXY_CRASH
-#undef GENUINE_ERROR_CRASH
-#undef GENUINE_FATAL_CRASH
-#undef GENUINE_NOAPK_CRASH
-
-// Undefine ALL native handlers that would kill the process
-#undef GENUINE_FALSE_NATIVE
-#undef GENUINE_FAKE_NATIVE
-#undef GENUINE_OVERLAY_NATIVE
-#undef GENUINE_ODEX_NATIVE
-#undef GENUINE_DEX_NATIVE
-#undef GENUINE_PROXY_NATIVE
-#undef GENUINE_ERROR_NATIVE
-#undef GENUINE_FATAL_NATIVE
-#undef GENUINE_NOAPK_NATIVE
-
-// Empty signature values
-#define GENUINE_NAME ""
-#define GENUINE_SIZE 0
-#define GENUINE_HASH 0
-
-#endif
-GENUINEOF
+        #ifndef GENUINE_H
+        #define GENUINE_H
+        #define NO_CHECK_MAPS
+        #define NO_CHECK_XPOSED
+        #undef GENUINE_FALSE_CRASH
+        #undef GENUINE_FAKE_CRASH
+        #undef GENUINE_OVERLAY_CRASH
+        #undef GENUINE_ODEX_CRASH
+        #undef GENUINE_DEX_CRASH
+        #undef GENUINE_PROXY_CRASH
+        #undef GENUINE_ERROR_CRASH
+        #undef GENUINE_FATAL_CRASH
+        #undef GENUINE_NOAPK_CRASH
+        #undef GENUINE_FALSE_NATIVE
+        #undef GENUINE_FAKE_NATIVE
+        #undef GENUINE_OVERLAY_NATIVE
+        #undef GENUINE_ODEX_NATIVE
+        #undef GENUINE_DEX_NATIVE
+        #undef GENUINE_PROXY_NATIVE
+        #undef GENUINE_ERROR_NATIVE
+        #undef GENUINE_FATAL_NATIVE
+        #undef GENUINE_NOAPK_NATIVE
+        #define GENUINE_NAME ""
+        #define GENUINE_SIZE 0
+        #define GENUINE_HASH 0
+        #endif
+        GENUINEOF
         
         echo "Created genuine.h:"
         cat "$GENUINE_DIR/genuine.h"
         
-        # Also copy to TMessagesProj/jni/integrity if different location
         mkdir -p "TMessagesProj/jni/integrity"
         cp "$GENUINE_DIR/genuine.h" "TMessagesProj/jni/integrity/genuine.h" 2>/dev/null || true
         
