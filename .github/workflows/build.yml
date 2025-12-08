@@ -49,91 +49,62 @@ jobs:
         ndk-version: r26d
         add-to-path: true
 
-    - name: Create dummy libneko.so to replace the one with Colorado check
+    - name: Remove libneko.so and create stub Genuine class
       run: |
-        echo "=== Creating dummy libneko.so ==="
-        
-        # Create a minimal C file for dummy library
-        mkdir -p dummy_neko
-        cat > dummy_neko/neko.c << 'DUMMYC'
-        #include <jni.h>
-        
-        // Dummy implementations - do nothing, return success
-        JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
-            return JNI_VERSION_1_6;
-        }
-        
-        // Any native methods that might be called should return safe values
-        JNIEXPORT jint JNICALL Java_me_piebridge_Genuine_check(JNIEnv *env, jclass clazz) {
-            return 0; // Return 0 = valid/success
-        }
-        DUMMYC
-        
-        # Find all libneko*.so locations and note them
-        echo "=== Finding libneko.so locations ==="
-        NEKO_LOCATIONS=$(find . -name "libneko*.so" -type f 2>/dev/null)
-        echo "$NEKO_LOCATIONS"
-        
-        # For each architecture, compile dummy library and replace
-        for arch in arm64-v8a armeabi-v7a x86 x86_64; do
-          echo "=== Building dummy for $arch ==="
-          
-          # Find existing libneko.so for this arch
-          EXISTING=$(find . -path "*/$arch/libneko*.so" -type f 2>/dev/null | head -1)
-          
-          if [ -n "$EXISTING" ]; then
-            LIBNAME=$(basename "$EXISTING")
-            LIBDIR=$(dirname "$EXISTING")
-            
-            echo "Found: $EXISTING"
-            echo "Will replace with dummy"
-            
-            # Compile dummy library
-            case $arch in
-              arm64-v8a)
-                COMPILER="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang"
-                ;;
-              armeabi-v7a)
-                COMPILER="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi21-clang"
-                ;;
-              x86)
-                COMPILER="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android21-clang"
-                ;;
-              x86_64)
-                COMPILER="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android21-clang"
-                ;;
-            esac
-            
-            if [ -f "$COMPILER" ]; then
-              $COMPILER -shared -fPIC -o "dummy_neko/$LIBNAME" dummy_neko/neko.c 2>/dev/null && {
-                echo "Compiled dummy $LIBNAME for $arch"
-                cp "dummy_neko/$LIBNAME" "$EXISTING"
-                echo "Replaced: $EXISTING"
-              } || {
-                echo "Failed to compile for $arch, keeping original"
-              }
-            else
-              echo "Compiler not found for $arch: $COMPILER"
-            fi
-          fi
+        echo "=== Step 1: Remove ALL libneko*.so files ==="
+        find . -name "libneko*.so" -type f | while read f; do
+          echo "Removing: $f"
+          rm -f "$f"
         done
         
-        echo "=== Dummy library creation complete ==="
-      env:
-        ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-
-    - name: Patch Java code (backup approach)
-      run: |
-        echo "=== Patching Java code as backup ==="
+        echo "=== Step 2: Find and replace Genuine.java ==="
+        GENUINE_JAVA=$(find . -name "Genuine.java" -type f 2>/dev/null | head -1)
+        if [ -n "$GENUINE_JAVA" ]; then
+          echo "Found: $GENUINE_JAVA"
+          GENUINE_DIR=$(dirname "$GENUINE_JAVA")
+          GENUINE_PKG=$(grep "^package " "$GENUINE_JAVA" | head -1 | sed 's/package //; s/;//')
+          echo "Package: $GENUINE_PKG"
+          
+          # Create stub Genuine.java that doesn't use native code
+          cat > "$GENUINE_JAVA" << GENUINEJAVA
+        package $GENUINE_PKG;
+        public class Genuine {
+            public static final int CHECK_TRUE = 0;
+            public static final int CHECK_FALSE = 1;
+            public static final int CHECK_FAKE = 2;
+            public static final int CHECK_OVERLAY = 3;
+            public static final int CHECK_ODEX = 4;
+            public static final int CHECK_DEX = 5;
+            public static final int CHECK_PROXY = 6;
+            public static final int CHECK_ERROR = 7;
+            public static final int CHECK_FATAL = 8;
+            public static final int CHECK_NOAPK = 9;
+            public static int check() { return CHECK_TRUE; }
+            public static int version() { return 0; }
+        }
+        GENUINEJAVA
+          echo "Created stub Genuine.java"
+          cat "$GENUINE_JAVA"
+        else
+          echo "Genuine.java not found, searching for other genuine-related files..."
+          find . -name "*.java" | xargs grep -l "class Genuine\|Genuine.check" 2>/dev/null | head -5
+        fi
         
-        # Find and patch any Genuine.check() calls to return 0
-        find . -name "*.java" | xargs grep -l "Genuine.check\|genuine.check" 2>/dev/null | while read f; do
+        echo "=== Step 3: Patch any remaining Genuine.check() calls ==="
+        find . -name "*.java" -type f | xargs grep -l "Genuine.check()" 2>/dev/null | while read f; do
           echo "Patching: $f"
           sed -i 's/Genuine.check()/0/g' "$f"
-          sed -i 's/genuine.check()/0/g' "$f"
         done
         
-        echo "=== Java patching complete ==="
+        echo "=== Step 4: Remove loadLibrary calls for neko ==="
+        find . -name "*.java" -type f | xargs grep -l 'loadLibrary.*"neko' 2>/dev/null | while read f; do
+          echo "Patching loadLibrary in: $f"
+          # Wrap in try-catch instead of commenting out
+          sed -i 's/System.loadLibrary("neko/try { System.loadLibrary("neko/g' "$f"
+          sed -i 's/");$/"); } catch (Throwable t) { }/g' "$f"
+        done
+        
+        echo "=== Complete ==="
 
     - name: Create genuine.h (may not be used for precompiled libs)
       run: |
@@ -164,6 +135,28 @@ jobs:
         rm -rf TMessagesProj/build/intermediates 2>/dev/null || true
       env:
         ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+
+    - name: Change app name to Nekogram (not Beta)
+      run: |
+        echo "=== Changing app name from Nekogram Beta to Nekogram ==="
+        
+        # Find all strings.xml files and change app_name
+        find . -name "strings.xml" -type f | while read f; do
+          if grep -q "Nekogram" "$f" 2>/dev/null; then
+            echo "Patching: $f"
+            sed -i 's/>Nekogram Beta</>Nekogram</g' "$f"
+            sed -i 's/>Nekogram X</>Nekogram</g' "$f"
+          fi
+        done
+        
+        # Also check AndroidManifest.xml
+        find . -name "AndroidManifest.xml" -type f | while read f; do
+          if grep -q "label.*Nekogram" "$f" 2>/dev/null; then
+            echo "Checking manifest: $f"
+          fi
+        done
+        
+        echo "=== App name change complete ==="
 
     - name: Create Extra.java
       run: |
@@ -401,4 +394,3 @@ jobs:
         name: Nekogram-Blur-APK
         path: "**/build/outputs/apk/**/*.apk"
         if-no-files-found: warn
-        
